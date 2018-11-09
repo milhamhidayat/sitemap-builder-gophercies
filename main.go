@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"html-link-parser-gophercies/link"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,21 +14,16 @@ func main() {
 	urlFlag := flag.String("url", "https://gophercises.com", "the url that you want to build a sitemap for")
 	flag.Parse()
 
-	resp, err := http.Get(*urlFlag)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
+	pages := requestPage(*urlFlag)
 
-	reqUrl := resp.Request.URL
-	links, _ := link.Parse(resp.Body)
-
-	baseUrl := &url.URL{
-		Scheme: reqUrl.Scheme,
-		Host:   reqUrl.Host,
+	for _, p := range pages {
+		fmt.Println(p)
 	}
 
-	base := baseUrl.String()
+}
+
+func gethrefs(r io.Reader, base string) []string {
+	links, _ := link.Parse(r)
 
 	var hrefs []string
 	for _, l := range links {
@@ -40,8 +36,44 @@ func main() {
 			hrefs = append(hrefs, l.Href)
 		}
 	}
-	for _, href := range hrefs {
-		fmt.Println(href)
+	return hrefs
+}
+
+func requestPage(urlStr string) []string {
+	resp, err := http.Get(urlStr)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	reqUrl := resp.Request.URL
+
+	baseUrl := &url.URL{
+		Scheme: reqUrl.Scheme,
+		Host:   reqUrl.Host,
 	}
 
+	base := baseUrl.String()
+	hrefs := gethrefs(resp.Body, base)
+	filterResultFn := filterWithPrefix(base)
+	return filter(hrefs, filterResultFn)
+}
+
+func filter(links []string, filterPrefix func(string) bool) []string {
+	var hrefs []string
+
+	for _, link := range links {
+		filterPrefixValue := filterPrefix(link)
+		if filterPrefixValue {
+			hrefs = append(hrefs, link)
+		}
+	}
+	return hrefs
+
+}
+
+func filterWithPrefix(prfx string) func(string) bool {
+	return func(link string) bool {
+		return strings.HasPrefix(link, prfx)
+	}
 }
