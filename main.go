@@ -1,14 +1,26 @@
 package main
 
 import (
+	"encoding/xml"
 	"flag"
-	"fmt"
 	"html-link-parser-gophercies/link"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 )
+
+const xmlns = "https://www.sitempas.org/schemas/sitemap/0.9"
+
+type loc struct {
+	Value string `xml:"loc"`
+}
+
+type urlset struct {
+	Urls  []loc  `xml:"url"`
+	Xmlns string `xml:"xmlns,attr"`
+}
 
 func main() {
 	urlFlag := flag.String("url", "https://gophercises.com", "the url that you want to build a sitemap for")
@@ -18,8 +30,17 @@ func main() {
 	// pages := requestPage(*urlFlag)
 	pages := bfs(*urlFlag, *maxDepthFlag)
 
-	for _, p := range pages {
-		fmt.Println(p)
+	toXml := urlset{
+		Xmlns: xmlns,
+	}
+	for _, page := range pages {
+		toXml.Urls = append(toXml.Urls, loc{page})
+	}
+
+	enc := xml.NewEncoder(os.Stdout)
+	enc.Indent("", "  ")
+	if err := enc.Encode(toXml); err != nil {
+		panic(err)
 	}
 
 }
@@ -32,6 +53,9 @@ func bfs(url string, maxDepth int) []string {
 	}
 	for i := 0; i <= maxDepth; i++ {
 		urlQueue, nextUrlQueue = nextUrlQueue, make(map[string]bool)
+		if len(urlQueue) == 0 {
+			break
+		}
 		for url := range urlQueue {
 			_, ok := urlVisited[url]
 			if ok {
@@ -40,6 +64,9 @@ func bfs(url string, maxDepth int) []string {
 			urlVisited[url] = true
 			hrefs := requestPage(url)
 			for _, link := range hrefs {
+				if _, ok := urlVisited[link]; !ok {
+					nextUrlQueue[link] = true
+				}
 				nextUrlQueue[link] = true
 			}
 		}
